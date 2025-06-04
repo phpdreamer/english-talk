@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>英语AI对话教练</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#3B82F6',
+              secondary: '#64748B',
+              accent: '#10B981'
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      .gradient-bg {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      .chat-bubble {
+        animation: slideIn 0.3s ease-out;
+      }
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .avatar-container {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+      .mic-button {
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+      }
+      .mic-button:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+      }
+      .recording {
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+      
+      function EnglishCoachApp() {
+        const [selectedScene, setSelectedScene] = useState(null);
+        const [message, setMessage] = useState('');
+        const [loading, setLoading] = useState(false);
+        const [isRecording, setIsRecording] = useState(false);
+        const [serverStatus, setServerStatus] = useState(null);
+        const [messages, setMessages] = useState([]);
+        const [showSettings, setShowSettings] = useState(false);
+        const [subtitle, setSubtitle] = useState('');
+        
+        const mediaRecorderRef = useRef(null);
+        const audioChunksRef = useRef([]);
+        
+        // 场景数据
+        const scenes = [
+          {
+            id: 'airport',
+            name: '机场对话',
+            description: '练习问路、值机和机场导航等场景对话',
+            icon: '✈️',
+            userRole: '旅客',
+            aiRole: '机场工作人员',
+            avatar: 'https://images.unsplash.com/photo-1551836022-4c4c79ecde51?w=400&h=400&fit=crop&crop=face&auto=format&q=80',
+            avatarFallback: '👩‍💼',
+            greeting: 'Hello! Welcome to the International Airport. How may I help you today?'
+          },
+          {
+            id: 'hotel',
+            name: '酒店入住',
+            description: '练习酒店入住、咨询设施和解决问题等场景对话',
+            icon: '🏨',
+            userRole: '客人',
+            aiRole: '前台接待',
+            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&crop=face&auto=format&q=80',
+            avatarFallback: '👨‍💼',
+            greeting: 'Good evening! Welcome to Grand Hotel. How may I assist you today?'
+          },
+          {
+            id: 'restaurant',
+            name: '餐厅点餐',
+            description: '练习点餐、询问菜品和特殊要求等场景对话',
+            icon: '🍽️',
+            userRole: '顾客',
+            aiRole: '服务员',
+            avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop&crop=face&auto=format&q=80',
+            avatarFallback: '👩‍🍳',
+            greeting: 'Welcome to our restaurant! Here\'s our menu. What would you like to order today?'
+          }
+        ];
+
+        // 检查服务器状态
+        useEffect(() => {
+          const checkServerStatus = async () => {
+            try {
+              const res = await fetch('http://localhost:3001/api/health');
+              const data = await res.json();
+              setServerStatus(data);
+            } catch (error) {
+              setServerStatus({ status: 'error', message: 'Server not running' });
+            }
+          };
+          
+          checkServerStatus();
+          const interval = setInterval(checkServerStatus, 30000);
+          return () => clearInterval(interval);
+        }, []);
+
+        // 场景切换时添加问候语
+        useEffect(() => {
+          if (selectedScene) {
+            const greetingMessage = {
+              sender: 'ai',
+              content: selectedScene.greeting,
+              timestamp: Date.now()
+            };
+            setMessages([greetingMessage]);
+          }
+        }, [selectedScene]);
+
+        // 开始录音
+        const startRecording = async () => {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+              audioChunksRef.current.push(event.data);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setSubtitle('正在录音...');
+          } catch (error) {
+            alert('无法访问麦克风，请检查权限设置');
+          }
+        };
+
+        // 停止录音并处理
+        const stopRecording = () => {
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+
+            mediaRecorderRef.current.onstop = async () => {
+              const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+              await processAudio(audioBlob);
+            };
+          }
+        };
+
+        // 处理音频文件
+        const processAudio = async (audioBlob) => {
+          setLoading(true);
+          setSubtitle('处理中...');
+          
+          try {
+            // 1. 语音转文字
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'audio.webm');
+
+            const transcribeRes = await fetch('http://localhost:3001/api/transcribe', {
+              method: 'POST',
+              body: formData,
+            });
+            const transcribeData = await transcribeRes.json();
+            const userText = transcribeData.text;
+
+            setSubtitle('你说: ' + userText);
+
+            // 添加用户消息
+            const userMessage = { sender: 'user', content: userText, timestamp: Date.now() };
+            setMessages(prev => [...prev, userMessage]);
+
+            // 2. 获取AI回复
+            const chatRes = await fetch('http://localhost:3001/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: userText,
+                sessionId: 'voice-session-' + selectedScene.id,
+                scene: selectedScene
+              }),
+            });
+            const chatData = await chatRes.json();
+            const aiText = chatData.response;
+
+            // 添加AI消息
+            const aiMessage = { sender: 'ai', content: aiText, timestamp: Date.now() };
+            setMessages(prev => [...prev, aiMessage]);
+
+            // 3. 文字转语音
+            if (serverStatus?.mode !== 'demo') {
+              try {
+                const ttsRes = await fetch('http://localhost:3001/api/speak', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    text: aiText, 
+                    sceneId: selectedScene.id 
+                  }),
+                });
+                
+                if (ttsRes.headers.get('content-type')?.includes('audio')) {
+                  const audioBlob = await ttsRes.blob();
+                  const audioUrl = URL.createObjectURL(audioBlob);
+                  const audio = new Audio(audioUrl);
+                  audio.play();
+                }
+              } catch (error) {
+                console.log('TTS not available');
+              }
+            }
+
+            setSubtitle('');
+          } catch (error) {
+            console.error('处理音频时出错:', error);
+            setSubtitle('处理出错，请重试');
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        // 文本输入
+        const sendTextMessage = async () => {
+          if (!message.trim()) return;
+          
+          setLoading(true);
+          const userMessage = { sender: 'user', content: message, timestamp: Date.now() };
+          setMessages(prev => [...prev, userMessage]);
+          setMessage('');
+
+          try {
+            const res = await fetch('http://localhost:3001/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                message: message,
+                sessionId: 'text-session-' + selectedScene.id,
+                scene: selectedScene
+              }),
+            });
+            const data = await res.json();
+            
+            const aiMessage = { sender: 'ai', content: data.response, timestamp: Date.now() };
+            setMessages(prev => [...prev, aiMessage]);
+
+            // TTS for text input too
+            if (serverStatus?.mode !== 'demo') {
+              try {
+                const ttsRes = await fetch('http://localhost:3001/api/speak', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    text: data.response, 
+                    sceneId: selectedScene.id 
+                  }),
+                });
+                
+                if (ttsRes.headers.get('content-type')?.includes('audio')) {
+                  const audioBlob = await ttsRes.blob();
+                  const audioUrl = URL.createObjectURL(audioBlob);
+                  const audio = new Audio(audioUrl);
+                  audio.play();
+                }
+              } catch (error) {
+                console.log('TTS not available');
+              }
+            }
+          } catch (error) {
+            console.error('Error:', error);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        const formatTime = (timestamp) => {
+          return new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        };
+
+        // 场景选择界面
+        if (!selectedScene) {
+          return React.createElement('div', { className: 'min-h-screen gradient-bg flex items-center justify-center p-4' },
+            React.createElement('div', { className: 'max-w-4xl w-full' },
+              React.createElement('div', { className: 'text-center mb-12' },
+                React.createElement('h1', { className: 'text-4xl md:text-6xl font-bold text-white mb-4' }, 
+                  '🎤 英语AI对话教练'
+                ),
+                React.createElement('p', { className: 'text-xl text-white/80 mb-8' }, 
+                  '选择场景，开始你的英语对话练习'
+                )
+              ),
+              React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-6' },
+                scenes.map(scene => 
+                  React.createElement('div', {
+                    key: scene.id,
+                    onClick: () => setSelectedScene(scene),
+                    className: 'bg-white/10 backdrop-blur-lg rounded-2xl p-8 cursor-pointer hover:bg-white/20 transition-all duration-300 border border-white/20 hover:scale-105'
+                  },
+                    React.createElement('div', { className: 'text-center' },
+                      React.createElement('div', { className: 'text-5xl mb-4' }, scene.icon),
+                      React.createElement('h3', { className: 'text-2xl font-bold text-white mb-3' }, scene.name),
+                      React.createElement('p', { className: 'text-white/70 mb-4' }, scene.description),
+                      React.createElement('div', { className: 'text-sm text-white/60' },
+                        `你的角色：${scene.userRole} | AI角色：${scene.aiRole}`
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          );
+        }
+
+        // 主界面
+        return React.createElement('div', { className: 'h-screen flex flex-col bg-gray-50' },
+          // 顶部导航
+          React.createElement('header', { className: 'bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between' },
+            React.createElement('div', { className: 'flex items-center space-x-4' },
+              React.createElement('button', {
+                onClick: () => setSelectedScene(null),
+                className: 'text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100'
+              }, '← 返回'),
+              React.createElement('div', { className: 'flex items-center space-x-3' },
+                React.createElement('span', { className: 'text-2xl' }, selectedScene.icon),
+                React.createElement('div', {},
+                  React.createElement('h1', { className: 'text-xl font-semibold text-gray-800' }, selectedScene.name),
+                  React.createElement('p', { className: 'text-sm text-gray-500' }, 
+                    `你是${selectedScene.userRole}，AI是${selectedScene.aiRole}`
+                  )
+                )
+              )
+            ),
+            React.createElement('div', { className: 'flex items-center space-x-4' },
+              React.createElement('div', { 
+                className: `px-3 py-1 rounded-full text-sm ${
+                  serverStatus?.status === 'ok' 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-red-100 text-red-800'
+                }`
+              }, 
+                serverStatus?.status === 'ok' 
+                  ? `✅ ${serverStatus.mode?.toUpperCase()}` 
+                  : '❌ 离线'
+              ),
+              React.createElement('button', {
+                onClick: () => setShowSettings(!showSettings),
+                className: 'p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100'
+              }, '⚙️')
+            )
+          ),
+
+          // 主要内容区域
+          React.createElement('div', { className: 'flex-1 flex overflow-hidden' },
+            // 左侧虚拟形象区域
+            React.createElement('div', { className: 'w-1/3 bg-gradient-to-br from-blue-100 to-purple-100 flex flex-col items-center justify-center p-8 relative' },
+              React.createElement('div', { className: 'text-center' },
+                React.createElement('div', { className: 'w-32 h-32 rounded-full mb-6 avatar-container flex items-center justify-center mx-auto overflow-hidden' },
+                  React.createElement('img', {
+                    src: selectedScene.avatar,
+                    alt: selectedScene.aiRole,
+                    className: 'w-full h-full object-cover',
+                    onError: (e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    },
+                    onLoad: (e) => {
+                      e.target.style.display = 'block';
+                      e.target.nextSibling.style.display = 'none';
+                    }
+                  }),
+                  React.createElement('div', {
+                    className: 'w-full h-full flex items-center justify-center text-4xl',
+                    style: { display: 'none' }
+                  }, selectedScene.avatarFallback)
+                ),
+                React.createElement('h3', { className: 'text-xl font-semibold text-gray-800 mb-2' }, selectedScene.aiRole),
+                React.createElement('p', { className: 'text-gray-600 mb-4' }, 'American Accent')
+              ),
+              
+              // 字幕区域 - 使用绝对定位避免影响头像布局
+              subtitle && React.createElement('div', { 
+                className: 'absolute bottom-8 left-4 right-4 bg-white/90 backdrop-blur-sm rounded-xl p-4 text-sm text-gray-700 shadow-lg border border-white/20' 
+              },
+                React.createElement('div', { className: 'flex items-start space-x-2' },
+                  React.createElement('div', { className: 'text-blue-500 font-medium' }, '💬'),
+                  React.createElement('div', { className: 'flex-1' }, subtitle)
+                )
+              )
+            ),
+
+            // 右侧对话区域
+            React.createElement('div', { className: 'flex-1 flex flex-col' },
+              // 消息显示区域
+              React.createElement('div', { className: 'flex-1 overflow-y-auto p-6 space-y-4' },
+                messages.map((msg, index) =>
+                  React.createElement('div', {
+                    key: index,
+                    className: `flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} chat-bubble`
+                  },
+                    React.createElement('div', {
+                      className: `max-w-[80%] rounded-2xl px-4 py-3 ${
+                        msg.sender === 'user' 
+                          ? 'bg-primary text-white' 
+                          : 'bg-white border border-gray-200 text-gray-800'
+                      }`
+                    },
+                      React.createElement('p', { className: 'mb-1' }, msg.content),
+                      React.createElement('div', { 
+                        className: `text-xs ${msg.sender === 'user' ? 'text-blue-200' : 'text-gray-500'}` 
+                      }, formatTime(msg.timestamp))
+                    )
+                  )
+                )
+              ),
+
+              // 底部输入区域
+              React.createElement('div', { className: 'border-t border-gray-200 bg-white p-6' },
+                React.createElement('div', { className: 'flex items-center space-x-4' },
+                  // 语音按钮
+                  React.createElement('button', {
+                    onClick: isRecording ? stopRecording : startRecording,
+                    disabled: loading,
+                    className: `w-14 h-14 rounded-full flex items-center justify-center text-white text-xl mic-button ${
+                      isRecording 
+                        ? 'bg-red-500 recording' 
+                        : loading 
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-primary hover:bg-blue-600'
+                    }`
+                  }, 
+                    isRecording ? '⏹️' : loading ? '⏳' : '🎤'
+                  ),
+                  
+                  // 文本输入
+                  React.createElement('div', { className: 'flex-1 flex space-x-2' },
+                    React.createElement('input', {
+                      type: 'text',
+                      value: message,
+                      onChange: (e) => setMessage(e.target.value),
+                      onKeyPress: (e) => e.key === 'Enter' && sendTextMessage(),
+                      placeholder: '输入英语消息...',
+                      className: 'flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent'
+                    }),
+                    React.createElement('button', {
+                      onClick: sendTextMessage,
+                      disabled: loading || !message.trim(),
+                      className: 'px-6 py-3 bg-accent hover:bg-green-600 disabled:bg-gray-400 text-white rounded-xl font-medium'
+                    }, '发送')
+                  )
+                ),
+                
+                React.createElement('div', { className: 'text-center mt-3' },
+                  React.createElement('p', { className: 'text-sm text-gray-500' },
+                    isRecording ? '正在录音，点击停止' : '点击麦克风录音或输入文字对话'
+                  )
+                )
+              )
+            )
+          )
+        );
+      }
+      
+      ReactDOM.render(React.createElement(EnglishCoachApp), document.getElementById('root'));
+    </script>
+  </body>
+</html>
