@@ -30,6 +30,15 @@ const mockResponses = {
 };
 
 module.exports = async function handler(req, res) {
+  // 设置CORS头
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -56,9 +65,10 @@ module.exports = async function handler(req, res) {
       // 模拟处理延迟
       await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
       
-      return res.json({ 
+      return res.status(200).json({ 
         response: aiResponse,
-        sessionId: sessionId
+        sessionId: sessionId,
+        mode: 'demo'
       });
     }
 
@@ -83,9 +93,10 @@ module.exports = async function handler(req, res) {
       conversationHistory.push({ role: 'assistant', content: aiResponse });
       conversations.set(sessionId, conversationHistory);
 
-      res.json({ 
+      res.status(200).json({ 
         response: aiResponse,
-        sessionId: sessionId
+        sessionId: sessionId,
+        mode: 'live'
       });
     } catch (error) {
       console.error('OpenAI API error:', error);

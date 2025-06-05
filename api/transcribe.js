@@ -18,11 +18,21 @@ const mockTranscriptions = [
 ];
 
 module.exports = async function handler(req, res) {
+  // 设置CORS头
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    // 在演示模式下直接返回模拟结果
     if (DEMO_MODE) {
       // 模拟语音识别 - 返回示例文本
       const randomText = mockTranscriptions[Math.floor(Math.random() * mockTranscriptions.length)];
@@ -30,30 +40,16 @@ module.exports = async function handler(req, res) {
       // 模拟处理延迟
       await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
       
-      return res.json({ text: randomText });
+      return res.status(200).json({ 
+        text: randomText,
+        mode: 'demo' 
+      });
     }
 
-    // 真实API调用逻辑
-    const form = new formidable.IncomingForm();
-    
-    form.parse(req, async (err, fields, files) => {
-      if (err) {
-        return res.status(400).json({ error: 'Failed to parse form data' });
-      }
-
-      const audioFile = files.audio;
-      if (!audioFile) {
-        return res.status(400).json({ error: 'No audio file provided' });
-      }
-
-      try {
-        // 这里需要实现OpenAI Whisper API调用
-        // 由于Vercel的限制，可能需要使用不同的方式处理文件上传
-        res.json({ text: "Audio transcription feature coming soon in production" });
-      } catch (error) {
-        console.error('Transcription error:', error);
-        res.status(500).json({ error: 'Failed to transcribe audio' });
-      }
+    // 真实API调用逻辑（暂时返回固定响应）
+    res.status(200).json({ 
+      text: "Audio transcription feature coming soon in production",
+      mode: 'live'
     });
   } catch (error) {
     console.error('API error:', error);
