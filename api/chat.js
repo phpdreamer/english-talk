@@ -1,3 +1,5 @@
+import { Configuration, OpenAIApi } from "openai";
+
 // 模拟模式开关 - 如果API密钥无效则自动启用
 const DEMO_MODE = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.startsWith('sk-or-v1-');
 
@@ -72,24 +74,26 @@ export default async function handler(req, res) {
       });
     }
 
-    // 真实API调用逻辑
+    // 真实API调用逻辑（GPT-4）
     try {
-      // 这里需要实现OpenAI GPT API调用
       let systemPrompt = 'You are an English conversation partner helping someone practice English. ';
-      
       if (scene) {
         systemPrompt += 'Current scenario: ' + scene.name + '. You are playing the role of ' + scene.aiRole + ', and the user is ' + scene.userRole + '. ';
         systemPrompt += 'Setting: ' + scene.description + ' ';
         systemPrompt += 'Respond naturally and help the user practice English in this scenario. Keep responses conversational and not too long.';
       }
-
       const messages = [
         { role: 'system', content: systemPrompt },
-        ...conversationHistory.slice(-10)
+        ...conversationHistory.slice(-10).map(msg => ({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content }))
       ];
 
-      // 实际的OpenAI API调用会在这里
-      const aiResponse = "OpenAI integration coming soon in production";
+      const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = new OpenAIApi(configuration);
+      const completion = await openai.createChatCompletion({
+        model: "gpt-4",
+        messages
+      });
+      const aiResponse = completion.data.choices[0].message.content;
       conversationHistory.push({ role: 'assistant', content: aiResponse });
       conversations.set(sessionId, conversationHistory);
 
@@ -99,8 +103,8 @@ export default async function handler(req, res) {
         mode: 'live'
       });
     } catch (error) {
-      console.error('OpenAI API error:', error);
-      res.status(500).json({ error: 'Failed to generate response' });
+      console.error('OpenAI API error:', error?.response?.data || error);
+      res.status(500).json({ error: 'Failed to generate response', details: error?.response?.data || error.message });
     }
   } catch (error) {
     console.error('Chat error:', error);
