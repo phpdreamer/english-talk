@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>英语AI对话教练</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -50,6 +50,39 @@
       @keyframes pulse {
         0%, 100% { transform: scale(1); }
         50% { transform: scale(1.1); }
+      }
+      
+      /* 手机端优化 */
+      @media (max-width: 768px) {
+        .mobile-vh {
+          height: 100vh;
+          height: 100dvh; /* 支持动态视口高度 */
+        }
+        
+        .mobile-safe-area {
+          padding-bottom: env(safe-area-inset-bottom);
+        }
+        
+        .touch-manipulation {
+          touch-action: manipulation;
+        }
+      }
+      
+      /* 防止移动端缩放 */
+      * {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+      }
+      
+      input, textarea {
+        -webkit-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
       }
     </style>
   </head>
@@ -112,7 +145,7 @@
         useEffect(() => {
           const checkServerStatus = async () => {
             try {
-              const res = await fetch('http://localhost:3001/api/health');
+              const res = await fetch('/api/health');
               const data = await res.json();
               setServerStatus(data);
             } catch (error) {
@@ -180,7 +213,7 @@
             const formData = new FormData();
             formData.append('audio', audioBlob, 'audio.webm');
 
-            const transcribeRes = await fetch('http://localhost:3001/api/transcribe', {
+            const transcribeRes = await fetch('/api/transcribe', {
               method: 'POST',
               body: formData,
             });
@@ -194,99 +227,89 @@
             setMessages(prev => [...prev, userMessage]);
 
             // 2. 获取AI回复
-            const chatRes = await fetch('http://localhost:3001/api/chat', {
+            const chatRes = await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 message: userText,
-                sessionId: 'voice-session-' + selectedScene.id,
+                sessionId: 'session-' + Date.now(),
                 scene: selectedScene
               }),
             });
             const chatData = await chatRes.json();
-            const aiText = chatData.response;
+            const aiResponse = chatData.response;
 
             // 添加AI消息
-            const aiMessage = { sender: 'ai', content: aiText, timestamp: Date.now() };
+            const aiMessage = { sender: 'ai', content: aiResponse, timestamp: Date.now() };
             setMessages(prev => [...prev, aiMessage]);
 
             // 3. 文字转语音
-            if (serverStatus?.mode !== 'demo') {
-              try {
-                const ttsRes = await fetch('http://localhost:3001/api/speak', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    text: aiText, 
-                    sceneId: selectedScene.id 
-                  }),
-                });
-                
-                if (ttsRes.headers.get('content-type')?.includes('audio')) {
-                  const audioBlob = await ttsRes.blob();
-                  const audioUrl = URL.createObjectURL(audioBlob);
-                  const audio = new Audio(audioUrl);
-                  audio.play();
-                }
-              } catch (error) {
-                console.log('TTS not available');
-              }
+            const ttsRes = await fetch('/api/speak', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: aiResponse, scene: selectedScene }),
+            });
+            const ttsData = await ttsRes.json();
+            
+            if (ttsData.audio_url) {
+              const audio = new Audio(ttsData.audio_url);
+              audio.play();
             }
 
-            setSubtitle('');
+            setSubtitle('AI回复: ' + aiResponse);
           } catch (error) {
-            console.error('处理音频时出错:', error);
-            setSubtitle('处理出错，请重试');
+            console.error('Error:', error);
+            setSubtitle('处理失败，请重试');
           } finally {
             setLoading(false);
           }
         };
 
-        // 文本输入
+        // 发送文本消息
         const sendTextMessage = async () => {
-          if (!message.trim()) return;
+          if (!message.trim() || loading) return;
           
           setLoading(true);
-          const userMessage = { sender: 'user', content: message, timestamp: Date.now() };
-          setMessages(prev => [...prev, userMessage]);
+          const userText = message;
           setMessage('');
 
           try {
-            const res = await fetch('http://localhost:3001/api/chat', {
+            // 添加用户消息
+            const userMessage = { sender: 'user', content: userText, timestamp: Date.now() };
+            setMessages(prev => [...prev, userMessage]);
+
+            // 获取AI回复
+            const res = await fetch('/api/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                message: message,
-                sessionId: 'text-session-' + selectedScene.id,
+                message: userText,
+                sessionId: 'session-' + Date.now(),
                 scene: selectedScene
               }),
             });
             const data = await res.json();
-            
-            const aiMessage = { sender: 'ai', content: data.response, timestamp: Date.now() };
+            const aiResponse = data.response;
+
+            // 添加AI消息
+            const aiMessage = { sender: 'ai', content: aiResponse, timestamp: Date.now() };
             setMessages(prev => [...prev, aiMessage]);
 
-            // TTS for text input too
-            if (serverStatus?.mode !== 'demo') {
-              try {
-                const ttsRes = await fetch('http://localhost:3001/api/speak', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ 
-                    text: data.response, 
-                    sceneId: selectedScene.id 
-                  }),
-                });
-                
-                if (ttsRes.headers.get('content-type')?.includes('audio')) {
-                  const audioBlob = await ttsRes.blob();
-                  const audioUrl = URL.createObjectURL(audioBlob);
-                  const audio = new Audio(audioUrl);
-                  audio.play();
-                }
-              } catch (error) {
-                console.log('TTS not available');
+            // 语音播放
+            try {
+              const ttsRes = await fetch('/api/speak', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: aiResponse, scene: selectedScene }),
+              });
+              const ttsData = await ttsRes.json();
+              
+              if (ttsData.audio_url) {
+                const audio = new Audio(ttsData.audio_url);
+                audio.play();
               }
+            } catch (error) {
+              console.error('TTS Error:', error);
             }
           } catch (error) {
             console.error('Error:', error);
@@ -301,28 +324,28 @@
 
         // 场景选择界面
         if (!selectedScene) {
-          return React.createElement('div', { className: 'min-h-screen gradient-bg flex items-center justify-center p-4' },
+          return React.createElement('div', { className: 'min-h-screen mobile-vh gradient-bg flex items-center justify-center p-4' },
             React.createElement('div', { className: 'max-w-4xl w-full' },
-              React.createElement('div', { className: 'text-center mb-12' },
-                React.createElement('h1', { className: 'text-4xl md:text-6xl font-bold text-white mb-4' }, 
+              React.createElement('div', { className: 'text-center mb-8 md:mb-12' },
+                React.createElement('h1', { className: 'text-3xl md:text-4xl lg:text-6xl font-bold text-white mb-4' }, 
                   '🎤 英语AI对话教练'
                 ),
-                React.createElement('p', { className: 'text-xl text-white/80 mb-8' }, 
+                React.createElement('p', { className: 'text-lg md:text-xl text-white/80 mb-6 md:mb-8' }, 
                   '选择场景，开始你的英语对话练习'
                 )
               ),
-              React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-6' },
+              React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6' },
                 scenes.map(scene => 
                   React.createElement('div', {
                     key: scene.id,
                     onClick: () => setSelectedScene(scene),
-                    className: 'bg-white/10 backdrop-blur-lg rounded-2xl p-8 cursor-pointer hover:bg-white/20 transition-all duration-300 border border-white/20 hover:scale-105'
+                    className: 'bg-white/10 backdrop-blur-lg rounded-2xl p-6 md:p-8 cursor-pointer hover:bg-white/20 transition-all duration-300 border border-white/20 hover:scale-105 touch-manipulation'
                   },
                     React.createElement('div', { className: 'text-center' },
-                      React.createElement('div', { className: 'text-5xl mb-4' }, scene.icon),
-                      React.createElement('h3', { className: 'text-2xl font-bold text-white mb-3' }, scene.name),
-                      React.createElement('p', { className: 'text-white/70 mb-4' }, scene.description),
-                      React.createElement('div', { className: 'text-sm text-white/60' },
+                      React.createElement('div', { className: 'text-4xl md:text-5xl mb-3 md:mb-4' }, scene.icon),
+                      React.createElement('h3', { className: 'text-xl md:text-2xl font-bold text-white mb-2 md:mb-3' }, scene.name),
+                      React.createElement('p', { className: 'text-sm md:text-base text-white/70 mb-3 md:mb-4' }, scene.description),
+                      React.createElement('div', { className: 'text-xs md:text-sm text-white/60' },
                         `你的角色：${scene.userRole} | AI角色：${scene.aiRole}`
                       )
                     )
@@ -333,28 +356,28 @@
           );
         }
 
-        // 主界面
-        return React.createElement('div', { className: 'h-screen flex flex-col bg-gray-50' },
-          // 顶部导航
-          React.createElement('header', { className: 'bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between' },
-            React.createElement('div', { className: 'flex items-center space-x-4' },
+        // 主界面 - 响应式布局
+        return React.createElement('div', { className: 'h-screen mobile-vh flex flex-col bg-gray-50' },
+          // 顶部导航 - 移动端优化
+          React.createElement('header', { className: 'bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between flex-shrink-0' },
+            React.createElement('div', { className: 'flex items-center space-x-2 md:space-x-4 flex-1 min-w-0' },
               React.createElement('button', {
                 onClick: () => setSelectedScene(null),
-                className: 'text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100'
+                className: 'text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 touch-manipulation flex-shrink-0'
               }, '← 返回'),
-              React.createElement('div', { className: 'flex items-center space-x-3' },
-                React.createElement('span', { className: 'text-2xl' }, selectedScene.icon),
-                React.createElement('div', {},
-                  React.createElement('h1', { className: 'text-xl font-semibold text-gray-800' }, selectedScene.name),
-                  React.createElement('p', { className: 'text-sm text-gray-500' }, 
+              React.createElement('div', { className: 'flex items-center space-x-2 md:space-x-3 min-w-0' },
+                React.createElement('span', { className: 'text-xl md:text-2xl flex-shrink-0' }, selectedScene.icon),
+                React.createElement('div', { className: 'min-w-0' },
+                  React.createElement('h1', { className: 'text-lg md:text-xl font-semibold text-gray-800 truncate' }, selectedScene.name),
+                  React.createElement('p', { className: 'text-xs md:text-sm text-gray-500 truncate' }, 
                     `你是${selectedScene.userRole}，AI是${selectedScene.aiRole}`
                   )
                 )
               )
             ),
-            React.createElement('div', { className: 'flex items-center space-x-4' },
+            React.createElement('div', { className: 'flex items-center space-x-2 md:space-x-4 flex-shrink-0' },
               React.createElement('div', { 
-                className: `px-3 py-1 rounded-full text-sm ${
+                className: `px-2 md:px-3 py-1 rounded-full text-xs md:text-sm ${
                   serverStatus?.status === 'ok' 
                     ? 'bg-green-100 text-green-800' 
                     : 'bg-red-100 text-red-800'
@@ -363,20 +386,16 @@
                 serverStatus?.status === 'ok' 
                   ? `✅ ${serverStatus.mode?.toUpperCase()}` 
                   : '❌ 离线'
-              ),
-              React.createElement('button', {
-                onClick: () => setShowSettings(!showSettings),
-                className: 'p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100'
-              }, '⚙️')
+              )
             )
           ),
 
-          // 主要内容区域
-          React.createElement('div', { className: 'flex-1 flex overflow-hidden' },
-            // 左侧虚拟形象区域
-            React.createElement('div', { className: 'w-1/3 bg-gradient-to-br from-blue-100 to-purple-100 flex flex-col items-center justify-center p-8 relative' },
+          // 主要内容区域 - 响应式布局
+          React.createElement('div', { className: 'flex-1 flex flex-col md:flex-row overflow-hidden' },
+            // 虚拟形象区域 - 移动端顶部，桌面端左侧
+            React.createElement('div', { className: 'md:w-1/3 bg-gradient-to-br from-blue-100 to-purple-100 flex flex-col items-center justify-center p-4 md:p-8 relative flex-shrink-0' },
               React.createElement('div', { className: 'text-center' },
-                React.createElement('div', { className: 'w-32 h-32 rounded-full mb-6 avatar-container flex items-center justify-center mx-auto overflow-hidden' },
+                React.createElement('div', { className: 'w-20 h-20 md:w-32 md:h-32 rounded-full mb-3 md:mb-6 avatar-container flex items-center justify-center mx-auto overflow-hidden' },
                   React.createElement('img', {
                     src: selectedScene.avatar,
                     alt: selectedScene.aiRole,
@@ -391,42 +410,42 @@
                     }
                   }),
                   React.createElement('div', {
-                    className: 'w-full h-full flex items-center justify-center text-4xl',
+                    className: 'w-full h-full flex items-center justify-center text-2xl md:text-4xl',
                     style: { display: 'none' }
                   }, selectedScene.avatarFallback)
                 ),
-                React.createElement('h3', { className: 'text-xl font-semibold text-gray-800 mb-2' }, selectedScene.aiRole),
-                React.createElement('p', { className: 'text-gray-600 mb-4' }, 'American Accent')
+                React.createElement('h3', { className: 'text-lg md:text-xl font-semibold text-gray-800 mb-1 md:mb-2' }, selectedScene.aiRole),
+                React.createElement('p', { className: 'text-sm md:text-base text-gray-600' }, 'American Accent')
               ),
               
-              // 字幕区域 - 使用绝对定位避免影响头像布局
+              // 字幕区域 - 移动端优化
               subtitle && React.createElement('div', { 
-                className: 'absolute bottom-8 left-4 right-4 bg-white/90 backdrop-blur-sm rounded-xl p-4 text-sm text-gray-700 shadow-lg border border-white/20' 
+                className: 'absolute bottom-2 md:bottom-8 left-2 md:left-4 right-2 md:right-4 bg-white/90 backdrop-blur-sm rounded-xl p-3 md:p-4 text-sm text-gray-700 shadow-lg border border-white/20' 
               },
                 React.createElement('div', { className: 'flex items-start space-x-2' },
-                  React.createElement('div', { className: 'text-blue-500 font-medium' }, '💬'),
-                  React.createElement('div', { className: 'flex-1' }, subtitle)
+                  React.createElement('div', { className: 'text-blue-500 font-medium flex-shrink-0' }, '💬'),
+                  React.createElement('div', { className: 'flex-1 break-words' }, subtitle)
                 )
               )
             ),
 
-            // 右侧对话区域
-            React.createElement('div', { className: 'flex-1 flex flex-col' },
+            // 对话区域 - 移动端优化
+            React.createElement('div', { className: 'flex-1 flex flex-col min-h-0' },
               // 消息显示区域
-              React.createElement('div', { className: 'flex-1 overflow-y-auto p-6 space-y-4' },
+              React.createElement('div', { className: 'flex-1 overflow-y-auto p-4 md:p-6 space-y-3 md:space-y-4' },
                 messages.map((msg, index) =>
                   React.createElement('div', {
                     key: index,
                     className: `flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} chat-bubble`
                   },
                     React.createElement('div', {
-                      className: `max-w-[80%] rounded-2xl px-4 py-3 ${
+                      className: `max-w-[85%] md:max-w-[80%] rounded-2xl px-3 md:px-4 py-2 md:py-3 ${
                         msg.sender === 'user' 
                           ? 'bg-primary text-white' 
                           : 'bg-white border border-gray-200 text-gray-800'
                       }`
                     },
-                      React.createElement('p', { className: 'mb-1' }, msg.content),
+                      React.createElement('p', { className: 'mb-1 text-sm md:text-base break-words' }, msg.content),
                       React.createElement('div', { 
                         className: `text-xs ${msg.sender === 'user' ? 'text-blue-200' : 'text-gray-500'}` 
                       }, formatTime(msg.timestamp))
@@ -435,14 +454,14 @@
                 )
               ),
 
-              // 底部输入区域
-              React.createElement('div', { className: 'border-t border-gray-200 bg-white p-6' },
-                React.createElement('div', { className: 'flex items-center space-x-4' },
+              // 底部输入区域 - 移动端优化
+              React.createElement('div', { className: 'border-t border-gray-200 bg-white p-4 md:p-6 mobile-safe-area flex-shrink-0' },
+                React.createElement('div', { className: 'flex items-center space-x-3 md:space-x-4' },
                   // 语音按钮
                   React.createElement('button', {
                     onClick: isRecording ? stopRecording : startRecording,
                     disabled: loading,
-                    className: `w-14 h-14 rounded-full flex items-center justify-center text-white text-xl mic-button ${
+                    className: `w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-white text-lg md:text-xl mic-button touch-manipulation flex-shrink-0 ${
                       isRecording 
                         ? 'bg-red-500 recording' 
                         : loading 
@@ -461,18 +480,18 @@
                       onChange: (e) => setMessage(e.target.value),
                       onKeyPress: (e) => e.key === 'Enter' && sendTextMessage(),
                       placeholder: '输入英语消息...',
-                      className: 'flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent'
+                      className: 'flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent text-sm md:text-base'
                     }),
                     React.createElement('button', {
                       onClick: sendTextMessage,
                       disabled: loading || !message.trim(),
-                      className: 'px-6 py-3 bg-accent hover:bg-green-600 disabled:bg-gray-400 text-white rounded-xl font-medium'
+                      className: 'px-4 md:px-6 py-2 md:py-3 bg-accent hover:bg-green-600 disabled:bg-gray-400 text-white rounded-xl font-medium text-sm md:text-base touch-manipulation flex-shrink-0'
                     }, '发送')
                   )
                 ),
                 
-                React.createElement('div', { className: 'text-center mt-3' },
-                  React.createElement('p', { className: 'text-sm text-gray-500' },
+                React.createElement('div', { className: 'text-center mt-2 md:mt-3' },
+                  React.createElement('p', { className: 'text-xs md:text-sm text-gray-500' },
                     isRecording ? '正在录音，点击停止' : '点击麦克风录音或输入文字对话'
                   )
                 )
