@@ -9,7 +9,7 @@ const SCENE_VOICES = {
   restaurant: 'EXAVITQu4vr4xnSDxMaL'  // Sarah - 友好女声，匹配女性餐厅服务员头像
 };
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // 设置CORS头
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -51,4 +51,4 @@ module.exports = async function handler(req, res) {
     console.error('Speak error:', error);
     res.status(500).json({ error: 'Failed to synthesize speech' });
   }
-}; 
+} 

@@ -1,7 +1,7 @@
 // 存储会话上下文（在实际生产环境中应该使用数据库或Redis）
 const conversations = new Map();
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // 设置CORS头
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -34,4 +34,4 @@ module.exports = async function handler(req, res) {
     console.error('Clear session error:', error);
     res.status(500).json({ error: 'Failed to clear session' });
   }
-}; 
+} 
