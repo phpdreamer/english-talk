@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:3001/api';
+// 使用相对路径以支持本地开发和Vercel部署
+const API_BASE = '/api';
 
 // 语音转文字
 export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
@@ -34,17 +35,14 @@ export const sendMessage = async (
 // 文字转语音 - 支持场景特定语音
 export const textToSpeech = async (
   text: string, 
-  sceneId: string = 'airport'
-): Promise<Blob> => {
-  const response = await axios.post(
-    `${API_BASE}/speak`,
-    { text, sceneId },
-    {
-      responseType: 'blob',
-    }
-  );
+  scene?: any
+): Promise<string> => {
+  const response = await axios.post(`${API_BASE}/speak`, {
+    text,
+    scene,
+  });
 
-  return response.data;
+  return response.data.audio_url;
 };
 
 // 清除会话

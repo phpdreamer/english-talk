@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"vite\"",
+    "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server/index.js"
+    "start": "vite preview --port 8080"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
@@ -16,7 +16,12 @@
     "framer-motion": "^11.0.5",
     "zustand": "^4.4.7",
     "openai": "^3.3.0",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "multer": "^1.4.4",
+    "dotenv": "^16.0.0",
+    "formidable": "^2.1.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
@@ -29,10 +34,6 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^4.9.5",
     "vite": "^4.5.0",
-    "express": "^4.18.0",
-    "cors": "^2.8.5",
-    "multer": "^1.4.4",
-    "concurrently": "^7.6.0",
-    "dotenv": "^16.0.0"
+    "concurrently": "^7.6.0"
   }
 }

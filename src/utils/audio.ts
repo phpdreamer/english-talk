@@ -61,18 +61,34 @@ export class AudioRecorder {
 export class AudioPlayer {
   private audio: HTMLAudioElement | null = null;
 
-  async playAudio(audioBlob: Blob): Promise<void> {
+  // 支持Blob和data URI两种格式
+  async playAudio(audioSource: Blob | string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const audioUrl = URL.createObjectURL(audioBlob);
+      let audioUrl: string;
+      let shouldRevokeUrl = false;
+
+      if (typeof audioSource === 'string') {
+        // 如果是字符串，假设是data URI或URL
+        audioUrl = audioSource;
+      } else {
+        // 如果是Blob，创建Object URL
+        audioUrl = URL.createObjectURL(audioSource);
+        shouldRevokeUrl = true;
+      }
+
       this.audio = new Audio(audioUrl);
 
       this.audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
+        if (shouldRevokeUrl) {
+          URL.revokeObjectURL(audioUrl);
+        }
         resolve();
       };
 
       this.audio.onerror = (error) => {
-        URL.revokeObjectURL(audioUrl);
+        if (shouldRevokeUrl) {
+          URL.revokeObjectURL(audioUrl);
+        }
         reject(new Error('Failed to play audio'));
       };
 
